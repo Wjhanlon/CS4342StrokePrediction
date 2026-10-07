@@ -36,6 +36,7 @@ STROKE_PRED_COLS = {
     "heart_disease": "Heart Disease",
     "hypertension": "Hypertension",
     "bp": "Blood Pressure Levels",
+    "glucose": "Average Glucose Level",
     "stroke": "Diagnosis",
 }
 
@@ -44,8 +45,14 @@ STROKE_PRED_COLS = {
 DIABETES_AGE_MIDPOINTS = {1: 21, 2: 27, 3: 32, 4: 37, 5: 42, 6: 47, 7: 52,
                        8: 57, 9: 62, 10: 67, 11: 72, 12: 77, 13: 82}
 
-FINAL_COLS = ["age", "sex", "bmi", "ever_smoked", "heart_disease",
-              "hypertension", "stroke", "source"]
+# Only diabetes_data has these. The other sources get age-band averages (see main).
+EXTRA_COLS = ["gen_health", "diff_walking", "high_chol"]
+
+# diabetes = 1 for a glucose reading at or above the standard diabetes cutoff (mg/dL)
+GLUCOSE_CUTOFF = 126
+
+FINAL_COLS = ["age", "sex", "bmi", "ever_smoked", "heart_disease", "hypertension",
+              "diabetes"] + EXTRA_COLS + ["stroke", "source"]
 
 
 def find_one(pattern):
@@ -73,6 +80,7 @@ def load_healthcare_stroke():
         "ever_smoked": ever,
         "heart_disease": df["heart_disease"].astype(int),
         "hypertension": df["hypertension"].astype(int),
+        "diabetes": (pd.to_numeric(df["avg_glucose_level"], errors="coerce") >= GLUCOSE_CUTOFF).astype(int),
         "stroke": df["stroke"].astype(int),
         "source": "healthcare_stroke",
     })
@@ -99,6 +107,7 @@ def load_stroke_prediction():
         "ever_smoked": ever,
         "heart_disease": pd.to_numeric(df[c["heart_disease"]], errors="coerce"),
         "hypertension": hypertension,
+        "diabetes": (pd.to_numeric(df[c["glucose"]], errors="coerce") >= GLUCOSE_CUTOFF).astype(int),
         "stroke": df[c["stroke"]].astype(str).str.strip().str.lower()
                     .map({"stroke": 1, "no stroke": 0}),
         "source": "stroke_prediction",
@@ -116,6 +125,10 @@ def load_diabetes():
         "ever_smoked": df["Smoker"].astype(int),
         "heart_disease": df["HeartDiseaseorAttack"].astype(int),
         "hypertension": df["HighBP"].astype(int),
+        "diabetes": df["Diabetes"].astype(int),
+        "gen_health": df["GenHlth"],           # 1 (excellent) to 5 (poor)
+        "diff_walking": df["DiffWalk"],
+        "high_chol": df["HighChol"],
         "stroke": df["Stroke"].astype(int),
         "source": "diabetes_data",
     })
@@ -134,13 +147,20 @@ def main():
     df = df.dropna(subset=required)
     df = df[df["age"] >= 18]
 
-    for col in ["sex", "ever_smoked", "heart_disease", "hypertension", "stroke"]:
+    for col in ["sex", "ever_smoked", "heart_disease", "hypertension", "diabetes", "stroke"]:
         df[col] = df[col].astype(int)
 
 
     band = (df["age"] // 10).astype(int)
     df["bmi"] = df["bmi"].fillna(df.groupby(band)["bmi"].transform("median"))
     df["bmi"] = df["bmi"].fillna(df["bmi"].median())  # safety net for an empty band
+
+    # The other sources lack the extra columns, so fill them with the diabetes_data
+    # average for the same age band. Uses features only, never the stroke label.
+    ref = df[df["source"] == "diabetes_data"]
+    band_means = ref.groupby(band[ref.index])[EXTRA_COLS].mean()
+    fill = band_means.reindex(band.values).set_axis(df.index)
+    df[EXTRA_COLS] = df[EXTRA_COLS].fillna(fill).fillna(ref[EXTRA_COLS].mean())
 
     os.makedirs(os.path.dirname(OUT_PATH), exist_ok=True)
     df.to_csv(OUT_PATH, index=False)

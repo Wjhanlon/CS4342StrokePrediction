@@ -3,12 +3,12 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from stroke_project import train, predict
 
-df = pd.read_csv("diabetes_data.csv")
+df = pd.read_csv("StrokeData/stroke_composite_no_stroke_prediction.csv")
 
-DROP = ["Stroke", "GenHlth", "DiffWalk", "PhysHlth", "MentHlth"]
-FEATURES = [c for c in df.columns if c not in DROP] # all 17 other columns
+FEATURES = ["age", "sex", "bmi", "ever_smoked", "heart_disease", "hypertension",
+            "diabetes", "gen_health", "diff_walking", "high_chol"]
 X = df[FEATURES].values.astype(float)
-y = df["Stroke"].values.astype(int)                   # capital S in this file
+y = df["stroke"].values.astype(int)
 
 # split FIRST (shuffled and stratified, since the file is sorted by source)
 Xtrain, Xtest, ytrain, ytest = train_test_split(
